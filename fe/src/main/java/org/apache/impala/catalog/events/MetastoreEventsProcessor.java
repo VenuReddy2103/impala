@@ -532,10 +532,14 @@ public class MetastoreEventsProcessor implements ExternalEventsProcessor {
   // catalog service instance to be used while processing events
   protected final CatalogServiceCatalog catalog_;
 
-  // scheduler daemon thread executor for processing events at given frequency
-  private final ScheduledExecutorService scheduler_ = Executors
-      .newSingleThreadScheduledExecutor(new ThreadFactoryBuilder().setDaemon(true)
-          .setNameFormat("MetastoreEventsProcessor").build());
+  // scheduler daemon thread executor for processing events and updating the latest event
+  // id. Pool size 2 always ensures a thread for event processing and another to update
+  // the latest event id. Same task do not execute concurrently.
+  private final ScheduledExecutorService scheduler_ = Executors.newScheduledThreadPool(2,
+      new ThreadFactoryBuilder()
+          .setDaemon(true)
+          .setNameFormat("MetastoreEventsProcessor")
+          .build());
 
   // metrics registry to keep track of metrics related to event processing
   //TODO create a separate singleton class which wraps around this so that we don't
@@ -683,7 +687,7 @@ public class MetastoreEventsProcessor implements ExternalEventsProcessor {
     Preconditions.checkState(pollingFrequencyInSec_ > 0);
     LOG.info(String.format("Starting metastore event polling with interval %d seconds.",
         pollingFrequencyInSec_));
-    scheduler_.scheduleWithFixedDelay(this::processEvents, pollingFrequencyInSec_,
+    scheduler_.scheduleAtFixedRate(this ::processEvents, pollingFrequencyInSec_,
         pollingFrequencyInSec_, TimeUnit.SECONDS);
     // Update latestEventId in another thread in case that the processEvents() thread is
     // blocked by slow metadata reloading or waiting for table locks.
